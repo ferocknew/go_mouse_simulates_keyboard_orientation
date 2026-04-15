@@ -12,7 +12,7 @@ nonisolated final class MouseInterceptor: @unchecked Sendable {
     var onLeftClick: (@Sendable (Bool) -> Void)?
     var onRightClick: (@Sendable (Bool) -> Void)?
     var onMiddleClick: (@Sendable (Bool) -> Void)?
-    var onScroll: (@Sendable (Int) -> Void)?
+    var onOtherButton: (@Sendable (Int32, Bool) -> Void)?  // (buttonNumber, pressed)
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -39,8 +39,7 @@ nonisolated final class MouseInterceptor: @unchecked Sendable {
             (1 << CGEventType.rightMouseDown.rawValue) |
             (1 << CGEventType.rightMouseUp.rawValue) |
             (1 << CGEventType.otherMouseDown.rawValue) |
-            (1 << CGEventType.otherMouseUp.rawValue) |
-            (1 << CGEventType.scrollWheel.rawValue)
+            (1 << CGEventType.otherMouseUp.rawValue)
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
 
@@ -125,13 +124,19 @@ nonisolated final class MouseInterceptor: @unchecked Sendable {
             interceptor.onRightClick?(false)
 
         case .otherMouseDown:
-            interceptor.onMiddleClick?(true)
+            let btnNum = event.getIntegerValueField(.mouseEventButtonNumber)
+            if btnNum == 2 {
+                interceptor.onMiddleClick?(true)
+            } else {
+                interceptor.onOtherButton?(Int32(btnNum), true)
+            }
         case .otherMouseUp:
-            interceptor.onMiddleClick?(false)
-
-        case .scrollWheel:
-            let delta = Int(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
-            interceptor.onScroll?(delta)
+            let btnNum = event.getIntegerValueField(.mouseEventButtonNumber)
+            if btnNum == 2 {
+                interceptor.onMiddleClick?(false)
+            } else {
+                interceptor.onOtherButton?(Int32(btnNum), false)
+            }
 
         default:
             break
