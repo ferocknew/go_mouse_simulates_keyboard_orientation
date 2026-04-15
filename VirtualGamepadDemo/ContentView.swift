@@ -40,24 +40,7 @@ struct ContentView: View {
             Divider()
 
             // 2 buttons with key selector
-            VStack(spacing: 12) {
-                Text("按钮")
-                    .font(.caption.bold())
-                HStack(spacing: 24) {
-                    buttonConfig(
-                        label: "A",
-                        subtitle: "左键",
-                        keyName: $controller.buttonAKeyName,
-                        pressed: controller.buttonA
-                    )
-                    buttonConfig(
-                        label: "B",
-                        subtitle: "右键",
-                        keyName: $controller.buttonBKeyName,
-                        pressed: controller.buttonB
-                    )
-                }
-            }
+            ButtonConfigSection(controller: controller)
 
             Divider()
 
@@ -127,7 +110,21 @@ struct ContentView: View {
 
     // MARK: - Button config with picker
 
-    private func buttonConfig(label: String, subtitle: String, keyName: Binding<String>, pressed: Bool) -> some View {
+struct ButtonConfigSection: View {
+    @Bindable var controller: GamepadController
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("按钮")
+                .font(.caption.bold())
+            HStack(spacing: 24) {
+                buttonItem(label: "A", subtitle: "左键", keyName: $controller.buttonAKeyName, pressed: controller.buttonA)
+                buttonItem(label: "B", subtitle: "右键", keyName: $controller.buttonBKeyName, pressed: controller.buttonB)
+            }
+        }
+    }
+
+    private func buttonItem(label: String, subtitle: String, keyName: Binding<String>, pressed: Bool) -> some View {
         VStack(spacing: 4) {
             ZStack {
                 Circle()
@@ -149,6 +146,7 @@ struct ContentView: View {
             .frame(width: 100)
         }
     }
+}
 }
 
 struct SensitivitySlider: View {
