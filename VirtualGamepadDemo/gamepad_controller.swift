@@ -62,6 +62,11 @@ final class GamepadController {
 
     private func checkAccessibility() {
         accessibilityGranted = AXIsProcessTrusted()
+        #if DEBUG
+        print("[Gamepad] AXIsProcessTrusted = \(accessibilityGranted)")
+        print("[Gamepad] bundlePath = \(Bundle.main.bundlePath)")
+        print("[Gamepad] execPath = \(Bundle.main.executablePath ?? "nil")")
+        #endif
         if !accessibilityGranted {
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(options)
