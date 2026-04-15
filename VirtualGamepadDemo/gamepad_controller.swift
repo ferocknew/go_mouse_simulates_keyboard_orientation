@@ -21,21 +21,15 @@ final class GamepadController {
     var isRight: Bool = false
     var buttonA: Bool = false
     var buttonB: Bool = false
-    var buttonC: Bool = false
-    var buttonD: Bool = false
 
     // 灵敏度
     var sensitivity: Float = 3.0 {
         didSet { direction.threshold = sensitivity }
     }
 
-    // 按钮键位配置
-    var buttonAKeyName: String = "J"
-    var buttonBKeyName: String = "K"
-    var buttonCKeyName: String = "U"
-    var buttonDKeyName: String = "I"
-    var selectKeyName: String = "N"
-    var startKeyName: String = "M"
+    // 按钮键位配置（可由 UI 修改）
+    var buttonAKeyName: String = "Space"
+    var buttonBKeyName: String = "Return"
 
     private var mouseInterceptor: MouseInterceptor?
     private var keyboardMonitor: KeyboardMonitor?
@@ -46,6 +40,10 @@ final class GamepadController {
     nonisolated(unsafe) private let accumulatorLock = NSLock()
     nonisolated(unsafe) private var _accumulatedDX: Int = 0
     nonisolated(unsafe) private var _accumulatedDY: Int = 0
+
+    // MARK: - 可用按键列表（用于 UI 选择器）
+
+    static let availableKeys: [String] = KeySimulator.keyMap.map { $0.name }
 
     func setup() {
         checkAccessibility()
@@ -98,12 +96,6 @@ final class GamepadController {
         mouseInterceptor?.onRightClick = { [weak self] pressed in
             Task { @MainActor in self?.handleButtonB(pressed) }
         }
-        mouseInterceptor?.onMiddleClick = { [weak self] pressed in
-            Task { @MainActor in self?.handleButtonC(pressed) }
-        }
-        mouseInterceptor?.onOtherButton = { [weak self] buttonNum, pressed in
-            Task { @MainActor in self?.handleOtherButton(buttonNum, pressed) }
-        }
 
         guard mouseInterceptor?.start() == true else {
             statusMessage = "鼠标拦截启动失败"
@@ -147,34 +139,21 @@ final class GamepadController {
 
     private func handleButtonA(_ pressed: Bool) {
         buttonA = pressed
-        if pressed { keySim.pressKey(keySim.buttonAKeyCode) }
-        else { keySim.releaseKey(keySim.buttonAKeyCode) }
+        guard let kc = KeySimulator.keyCode(for: buttonAKeyName) else { return }
+        if pressed { keySim.pressKey(kc) }
+        else { keySim.releaseKey(kc) }
     }
 
     private func handleButtonB(_ pressed: Bool) {
         buttonB = pressed
-        if pressed { keySim.pressKey(keySim.buttonBKeyCode) }
-        else { keySim.releaseKey(keySim.buttonBKeyCode) }
-    }
-
-    private func handleButtonC(_ pressed: Bool) {
-        buttonC = pressed
-        if pressed { keySim.pressKey(keySim.buttonCKeyCode) }
-        else { keySim.releaseKey(keySim.buttonCKeyCode) }
-    }
-
-    private func handleOtherButton(_ buttonNum: Int32, _ pressed: Bool) {
-        guard buttonNum >= 3 else { return }
-        if buttonNum == 3 {
-            buttonD = pressed
-            if pressed { keySim.pressKey(keySim.buttonDKeyCode) }
-            else { keySim.releaseKey(keySim.buttonDKeyCode) }
-        }
+        guard let kc = KeySimulator.keyCode(for: buttonBKeyName) else { return }
+        if pressed { keySim.pressKey(kc) }
+        else { keySim.releaseKey(kc) }
     }
 
     private func resetUIState() {
         isUp = false; isDown = false; isLeft = false; isRight = false
-        buttonA = false; buttonB = false; buttonC = false; buttonD = false
+        buttonA = false; buttonB = false
     }
 
     // MARK: - Report timer (125Hz)
@@ -202,19 +181,12 @@ final class GamepadController {
         }
         direction.decay()
 
-        // 模拟方向键：D-pad (箭头) + X摇杆 (WASD) 同时输出
+        // 8 方向：上下左右 + 对角（同时按两个方向键）
         let prevUp = direction.isUp
         let prevDown = direction.isDown
         let prevLeft = direction.isLeft
         let prevRight = direction.isRight
 
-        // WASD (X摇杆)
-        syncKey(KeySimulator.keyCodeW, pressed: direction.isUp, wasPressed: prevUp)
-        syncKey(KeySimulator.keyCodeS, pressed: direction.isDown, wasPressed: prevDown)
-        syncKey(KeySimulator.keyCodeA, pressed: direction.isLeft, wasPressed: prevLeft)
-        syncKey(KeySimulator.keyCodeD, pressed: direction.isRight, wasPressed: prevRight)
-
-        // Arrow keys (D-pad)
         syncKey(KeySimulator.keyCodeUp, pressed: direction.isUp, wasPressed: prevUp)
         syncKey(KeySimulator.keyCodeDown, pressed: direction.isDown, wasPressed: prevDown)
         syncKey(KeySimulator.keyCodeLeft, pressed: direction.isLeft, wasPressed: prevLeft)

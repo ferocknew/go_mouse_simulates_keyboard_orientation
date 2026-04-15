@@ -30,7 +30,7 @@ struct ContentView: View {
 
             Divider()
 
-            // Joystick visual
+            // Joystick visual (8 directions)
             VStack(spacing: 8) {
                 Text("摇杆 (鼠标移动)")
                     .font(.caption.bold())
@@ -39,24 +39,24 @@ struct ContentView: View {
 
             Divider()
 
-            // Buttons
-            VStack(spacing: 8) {
+            // 2 buttons with key selector
+            VStack(spacing: 12) {
                 Text("按钮")
                     .font(.caption.bold())
-                HStack(spacing: 16) {
-                    gamepadButton(label: "A", subtitle: "左键→\(controller.buttonAKeyName)", pressed: controller.buttonA)
-                    gamepadButton(label: "B", subtitle: "右键→\(controller.buttonBKeyName)", pressed: controller.buttonB)
-                    gamepadButton(label: "C", subtitle: "中键→\(controller.buttonCKeyName)", pressed: controller.buttonC)
-                    gamepadButton(label: "D", subtitle: "侧键→\(controller.buttonDKeyName)", pressed: controller.buttonD)
+                HStack(spacing: 24) {
+                    buttonConfig(
+                        label: "A",
+                        subtitle: "左键",
+                        keyName: $controller.buttonAKeyName,
+                        pressed: controller.buttonA
+                    )
+                    buttonConfig(
+                        label: "B",
+                        subtitle: "右键",
+                        keyName: $controller.buttonBKeyName,
+                        pressed: controller.buttonB
+                    )
                 }
-            }
-
-            Divider()
-
-            // System buttons
-            HStack(spacing: 24) {
-                sysButton(label: "Select", key: controller.selectKeyName)
-                sysButton(label: "Start", key: controller.startKeyName)
             }
 
             Divider()
@@ -92,67 +92,61 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Joystick
+    // MARK: - Joystick (8 directions)
 
     private var joystickView: some View {
         ZStack {
-            // Background circle
             Circle()
                 .fill(Color.gray.opacity(0.15))
-                .frame(width: 120, height: 120)
+                .frame(width: 140, height: 140)
 
-            // Direction indicators
-            directionArrow("↑", active: controller.isUp, offset: -40)
-            directionArrow("↓", active: controller.isDown, offset: 40)
-            directionArrow("←", active: controller.isLeft, offsetX: -40)
-            directionArrow("→", active: controller.isRight, offsetX: 40)
+            // 8 directions
+            directionArrow("↑", active: controller.isUp, offsetY: -45)
+            directionArrow("↓", active: controller.isDown, offsetY: 45)
+            directionArrow("←", active: controller.isLeft, offsetX: -45)
+            directionArrow("→", active: controller.isRight, offsetX: 45)
+            // Diagonals
+            directionArrow("↖", active: controller.isUp && controller.isLeft, offsetX: -35, offsetY: -35)
+            directionArrow("↗", active: controller.isUp && controller.isRight, offsetX: 35, offsetY: -35)
+            directionArrow("↙", active: controller.isDown && controller.isLeft, offsetX: -35, offsetY: 35)
+            directionArrow("↘", active: controller.isDown && controller.isRight, offsetX: 35, offsetY: 35)
 
-            // Center dot
             Circle()
                 .fill(Color.accentColor.opacity(0.8))
                 .frame(width: 16, height: 16)
         }
-        .frame(width: 120, height: 120)
+        .frame(width: 140, height: 140)
     }
 
-    private func directionArrow(_ symbol: String, active: Bool, offset: CGFloat = 0, offsetX: CGFloat = 0) -> some View {
+    private func directionArrow(_ symbol: String, active: Bool, offsetX: CGFloat = 0, offsetY: CGFloat = 0) -> some View {
         Text(symbol)
             .font(.title3)
-            .foregroundStyle(active ? Color.accentColor : Color.gray.opacity(0.4))
-            .offset(x: offsetX, y: offset)
+            .foregroundStyle(active ? Color.accentColor : Color.gray.opacity(0.3))
+            .offset(x: offsetX, y: offsetY)
     }
 
-    // MARK: - Button
+    // MARK: - Button config with picker
 
-    private func gamepadButton(label: String, subtitle: String, pressed: Bool) -> some View {
+    private func buttonConfig(label: String, subtitle: String, keyName: Binding<String>, pressed: Bool) -> some View {
         VStack(spacing: 4) {
             ZStack {
                 Circle()
                     .fill(pressed ? Color.accentColor : Color.gray.opacity(0.2))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 48, height: 48)
                 Text(label)
                     .font(.title3.bold())
                     .foregroundStyle(pressed ? .white : .secondary)
             }
             Text(subtitle)
-                .font(.system(size: 9))
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private func sysButton(label: String, key: String) -> some View {
-        VStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.gray.opacity(0.2))
-                .frame(width: 60, height: 28)
-                .overlay {
-                    Text(label)
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+            Picker("按键", selection: keyName) {
+                ForEach(GamepadController.availableKeys, id: \.self) { key in
+                    Text(key).tag(key)
                 }
-            Text("→ \(key)")
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+            }
+            .labelsHidden()
+            .frame(width: 100)
         }
     }
 }
