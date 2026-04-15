@@ -209,16 +209,16 @@ final class GamepadController {
         let prevRight = direction.isRight
 
         // WASD (X摇杆)
-        syncKey(keySim.keyCodeW, pressed: direction.isUp, wasPressed: prevUp)
-        syncKey(keySim.keyCodeS, pressed: direction.isDown, wasPressed: prevDown)
-        syncKey(keySim.keyCodeA, pressed: direction.isLeft, wasPressed: prevLeft)
-        syncKey(keySim.keyCodeD, pressed: direction.isRight, wasPressed: prevRight)
+        syncKey(KeySimulator.keyCodeW, pressed: direction.isUp, wasPressed: prevUp)
+        syncKey(KeySimulator.keyCodeS, pressed: direction.isDown, wasPressed: prevDown)
+        syncKey(KeySimulator.keyCodeA, pressed: direction.isLeft, wasPressed: prevLeft)
+        syncKey(KeySimulator.keyCodeD, pressed: direction.isRight, wasPressed: prevRight)
 
         // Arrow keys (D-pad)
-        syncKey(keySim.keyCodeUp, pressed: direction.isUp, wasPressed: prevUp)
-        syncKey(keySim.keyCodeDown, pressed: direction.isDown, wasPressed: prevDown)
-        syncKey(keySim.keyCodeLeft, pressed: direction.isLeft, wasPressed: prevLeft)
-        syncKey(keySim.keyCodeRight, pressed: direction.isRight, wasPressed: prevRight)
+        syncKey(KeySimulator.keyCodeUp, pressed: direction.isUp, wasPressed: prevUp)
+        syncKey(KeySimulator.keyCodeDown, pressed: direction.isDown, wasPressed: prevDown)
+        syncKey(KeySimulator.keyCodeLeft, pressed: direction.isLeft, wasPressed: prevLeft)
+        syncKey(KeySimulator.keyCodeRight, pressed: direction.isRight, wasPressed: prevRight)
 
         // 更新 UI
         Task { @MainActor [weak self] in
