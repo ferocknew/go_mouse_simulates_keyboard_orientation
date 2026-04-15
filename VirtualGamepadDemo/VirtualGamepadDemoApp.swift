@@ -2,16 +2,23 @@
 //  VirtualGamepadDemoApp.swift
 //  VirtualGamepadDemo
 //
-//  Created by 傅璎俊 on 2026/4/15.
-//
 
 import SwiftUI
 
 @main
 struct VirtualGamepadDemoApp: App {
+    @State private var controller = GamepadController()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(controller)
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
+        .defaultSize(width: 420, height: 640)
+        .commands {
+            CommandGroup(replacing: .newItem) { }
         }
     }
 }
