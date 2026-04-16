@@ -30,6 +30,14 @@ func KeyUp(keyCode uint16) {
 	C.sendKeyUp(C.CGKeyCode(keyCode))
 }
 
+func HideCursor() {
+	C.hideCursor()
+}
+
+func ShowCursor() {
+	C.showCursor()
+}
+
 // ===== CGEventTap 回调（鼠标移动 + 键盘热键）=====
 
 //export eventTapCallback
@@ -44,17 +52,37 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 		dy := C.CGEventGetIntegerValueField(event, C.kCGMouseEventDeltaY)
 		captureRef.AddDelta(int64(dx), int64(dy))
 
+		// 捕获激活时吞掉鼠标移动事件
+		captureRef.muActive.Lock()
+		active := captureRef.active
+		captureRef.muActive.Unlock()
+		if active {
+			return nil
+		}
+
+	case C.kCGEventLeftMouseDown, C.kCGEventLeftMouseUp,
+		C.kCGEventRightMouseDown, C.kCGEventRightMouseUp,
+		C.kCGEventOtherMouseDown, C.kCGEventOtherMouseUp:
+		// 捕获激活时吞掉鼠标点击事件，防止切换到其他应用
+		captureRef.muActive.Lock()
+		active := captureRef.active
+		captureRef.muActive.Unlock()
+		if active {
+			return nil
+		}
+
 	case C.kCGEventKeyDown:
 		keycode := C.CGEventGetIntegerValueField(event, C.kCGKeyboardEventKeycode)
 		flags := C.CGEventGetFlags(event)
 		if keycode == 0x35 && (flags&C.kCGEventFlagMaskControl) != 0 {
 			log.Printf("[HOTKEY] Ctrl+ESC 检测到，切换捕获状态")
 			captureRef.Toggle()
+			return nil // 吞掉 Ctrl+ESC
 		}
 
 	case C.kCGEventTapDisabledByTimeout:
 		log.Printf("[WARN] EventTap 因超时被禁用，重新启用")
-		C.CGEventTapEnable(C.CFMachPortRef(unsafe.Pointer(nil)), C._Bool(true))
+		C.reenableEventTap()
 
 	case C.kCGEventTapDisabledByUserInput:
 		log.Printf("[WARN] EventTap 因用户输入被禁用")

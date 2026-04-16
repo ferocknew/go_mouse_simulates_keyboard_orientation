@@ -6,4 +6,4 @@ mouse_button_1: x # 左键
 mouse_button_2: z # 右键，3 是滚轮按下
 mouse_button_4: v # 侧键，前进
 mouse_button_5: enter # 侧键，后退
-move_speed: 3.5
+move_speed: 7

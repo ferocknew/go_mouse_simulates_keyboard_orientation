@@ -37,6 +37,12 @@ int createEventTap(void) {
     CGEventMask eventMask =
         CGEventMaskBit(kCGEventMouseMoved) |
         CGEventMaskBit(kCGEventLeftMouseDragged) |
+        CGEventMaskBit(kCGEventLeftMouseDown) |
+        CGEventMaskBit(kCGEventLeftMouseUp) |
+        CGEventMaskBit(kCGEventRightMouseDown) |
+        CGEventMaskBit(kCGEventRightMouseUp) |
+        CGEventMaskBit(kCGEventOtherMouseDown) |
+        CGEventMaskBit(kCGEventOtherMouseUp) |
         CGEventMaskBit(kCGEventKeyDown);
 
     fprintf(stderr, "[DEBUG] 正在创建 EventTap...\n");
@@ -44,7 +50,7 @@ int createEventTap(void) {
     eventTapPort = CGEventTapCreate(
         kCGSessionEventTap,
         kCGHeadInsertEventTap,
-        kCGEventTapOptionListenOnly,
+        kCGEventTapOptionDefault,
         eventMask,
         (CGEventTapCallBack)eventTapCallback,
         NULL
@@ -132,5 +138,19 @@ void stopHIDManager(void) {
         IOHIDManagerClose(hidManager, kIOHIDOptionsTypeNone);
         CFRelease(hidManager);
         hidManager = NULL;
+    }
+}
+
+void hideCursor(void) {
+    CGDisplayHideCursor(CGMainDisplayID());
+}
+
+void showCursor(void) {
+    CGDisplayShowCursor(CGMainDisplayID());
+}
+
+void reenableEventTap(void) {
+    if (eventTapPort) {
+        CGEventTapEnable(eventTapPort, true);
     }
 }

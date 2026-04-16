@@ -23,7 +23,7 @@ var directionNames = map[int]string{
 const (
 	Deadzone      = 2
 	SmoothFactor  = 0.2
-	MinKeyHoldMs  = 20 // 按键最小保持时间
+	MinKeyHoldMs  = 50 // 按键最小保持时间
 	TickInterval  = time.Millisecond
 )
 
@@ -170,7 +170,8 @@ func (c *Capture) updateKeys(newKeys []uint16) {
 		if !newSet[k] {
 			if since, ok := c.keySince[k]; ok {
 				if now.Sub(since) < MinKeyHoldMs*time.Millisecond {
-					continue // 保持，不释放
+					newSet[k] = true // 保持：留在 pressed 中，下个 tick 继续检查
+					continue
 				}
 			}
 			KeyUp(k)

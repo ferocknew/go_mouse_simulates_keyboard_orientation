@@ -20,4 +20,11 @@ void stopHIDManager(void);
 // 权限检查
 int checkAccessibility(void);
 
+// 光标隐藏/显示
+void hideCursor(void);
+void showCursor(void);
+
+// 重新启用 EventTap（超时后调用）
+void reenableEventTap(void);
+
 #endif
