@@ -71,6 +71,7 @@ func main() {
 		select {
 		case <-sigChan:
 			fmt.Println("\n正在退出...")
+			ShowCursor()
 			close(done)
 			time.Sleep(100 * time.Millisecond)
 			return

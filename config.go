@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // macOS 虚拟键码映射表
@@ -39,7 +40,8 @@ type Config struct {
 	MouseRightButton uint16
 	MouseBackButton  uint16
 	MouseForwardBtn  uint16
-	InputSpeed       float64
+	TickInterval     time.Duration // 采样间隔（由 mouse_sampling_rate 计算）
+	CoastDuration    time.Duration // 惯性滑行时间
 }
 
 func defaultConfig() *Config {
@@ -52,7 +54,8 @@ func defaultConfig() *Config {
 		MouseRightButton: 0x07, // x
 		MouseBackButton:  0x09, // v
 		MouseForwardBtn:  0x24, // enter
-		InputSpeed:       1.0,
+		TickInterval:    time.Millisecond,
+		CoastDuration:   80 * time.Millisecond,
 	}
 }
 
@@ -102,12 +105,21 @@ func LoadConfig(path string) (*Config, error) {
 			val = strings.TrimSpace(val[:idx])
 		}
 
-		// 数值配置
-		if key == "move_speed" || key == "keyboard_input_speed" {
-			cleanVal := strings.TrimSuffix(strings.TrimSpace(val), "x")
-			if f, err := strconv.ParseFloat(cleanVal, 64); err == nil && f > 0 {
-				cfg.InputSpeed = f
-				log.Printf("[CONFIG] %s → %.2f", key, f)
+		// 采样率配置
+		if key == "mouse_sampling_rate" {
+			if n, err := strconv.Atoi(val); err == nil && n > 0 {
+				cfg.TickInterval = time.Second / time.Duration(n)
+				log.Printf("[CONFIG] %s → %dHz (%v)", key, n, cfg.TickInterval)
+			} else {
+				log.Printf("[CONFIG] 无效的 %s: %s", key, val)
+			}
+			continue
+		}
+
+		if key == "move_inertia_time" {
+			if f, err := strconv.ParseFloat(val, 64); err == nil && f >= 0 {
+				cfg.CoastDuration = time.Duration(f * float64(time.Second))
+				log.Printf("[CONFIG] %s → %v", key, cfg.CoastDuration)
 			} else {
 				log.Printf("[CONFIG] 无效的 %s: %s", key, val)
 			}

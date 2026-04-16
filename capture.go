@@ -21,10 +21,9 @@ var directionNames = map[int]string{
 }
 
 const (
-	Deadzone      = 2
-	SmoothFactor  = 0.2
-	MinKeyHoldMs  = 50 // 按键最小保持时间
-	TickInterval  = time.Millisecond
+	Deadzone     = 2
+	SmoothFactor = 0.2
+	MinKeyHoldMs = 50 // 按键最小保持时间
 )
 
 type Capture struct {
@@ -51,6 +50,10 @@ type Capture struct {
 	// 平滑
 	prevDx float64
 	prevDy float64
+
+	// 惯性滑行
+	lastMoveTime time.Time
+	lastDirKeys  []uint16
 
 	// 控制
 	muActive sync.Mutex
@@ -88,7 +91,7 @@ func (c *Capture) AddDelta(dx, dy int64) {
 
 // RunTickLoop 在独立 goroutine 中运行 tick 循环
 func (c *Capture) RunTickLoop(done <-chan struct{}) {
-	ticker := time.NewTicker(TickInterval)
+	ticker := time.NewTicker(c.cfg.TickInterval)
 	defer ticker.Stop()
 
 	for {
@@ -115,15 +118,11 @@ func (c *Capture) tick() {
 	dx := int64(c.accumDx.Swap(0))
 	dy := int64(c.accumDy.Swap(0))
 
-	// 灵敏度缩放
-	fdx := float64(dx) * c.cfg.InputSpeed
-	fdy := float64(dy) * c.cfg.InputSpeed
-
 	// 平滑（只在有数据时混合，无数据时衰减）
 	var sdx, sdy float64
 	if dx != 0 || dy != 0 {
-		sdx = c.smooth(c.prevDx, fdx)
-		sdy = c.smooth(c.prevDy, fdy)
+		sdx = c.smooth(c.prevDx, float64(dx))
+		sdy = c.smooth(c.prevDy, float64(dy))
 	} else {
 		// 没有新数据，使用上一次的值衰减
 		sdx = c.prevDx * 0.8
@@ -134,8 +133,14 @@ func (c *Capture) tick() {
 
 	// Deadzone
 	if abs64(int64(sdx)) < Deadzone && abs64(int64(sdy)) < Deadzone {
+		// 惯性滑行：鼠标停住后，方向键继续保持一段时间再释放
+		if len(c.lastDirKeys) > 0 && time.Since(c.lastMoveTime) < c.cfg.CoastDuration {
+			c.updateKeys(c.lastDirKeys)
+			return
+		}
 		c.releaseAll()
 		c.dirName = "Idle"
+		c.lastDirKeys = nil
 		return
 	}
 
@@ -146,6 +151,10 @@ func (c *Capture) tick() {
 
 	newKeys := c.directionKeys[sector]
 	c.updateKeys(newKeys)
+
+	// 记录有效移动，用于惯性滑行
+	c.lastMoveTime = time.Now()
+	c.lastDirKeys = newKeys
 
 	newDir := directionNames[sector]
 	if c.dirName != newDir {
@@ -219,8 +228,10 @@ func (c *Capture) Toggle() {
 		c.mu.Unlock()
 	}
 	if c.active {
+		HideCursor()
 		fmt.Println("\n✅ 捕获已开启")
 	} else {
+		ShowCursor()
 		fmt.Println("\n❌ 捕获已关闭")
 	}
 }

@@ -57,8 +57,8 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 		active := captureRef.active
 		captureRef.muActive.Unlock()
 		if active {
-			return nil
-		}
+				return C.CGEventRef(unsafe.Pointer(nil))
+			}
 
 	case C.kCGEventLeftMouseDown, C.kCGEventLeftMouseUp,
 		C.kCGEventRightMouseDown, C.kCGEventRightMouseUp,
@@ -68,7 +68,7 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 		active := captureRef.active
 		captureRef.muActive.Unlock()
 		if active {
-			return nil
+			return C.CGEventRef(unsafe.Pointer(nil))
 		}
 
 	case C.kCGEventKeyDown:
@@ -77,7 +77,7 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 		if keycode == 0x35 && (flags&C.kCGEventFlagMaskControl) != 0 {
 			log.Printf("[HOTKEY] Ctrl+ESC 检测到，切换捕获状态")
 			captureRef.Toggle()
-			return nil // 吞掉 Ctrl+ESC
+			return C.CGEventRef(unsafe.Pointer(nil)) // 吞掉 Ctrl+ESC
 		}
 
 	case C.kCGEventTapDisabledByTimeout:
