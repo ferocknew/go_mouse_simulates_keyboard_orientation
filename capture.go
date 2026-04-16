@@ -44,8 +44,9 @@ type Capture struct {
 	keySince   map[uint16]time.Time // 每个按键按下的时间
 
 	// 鼠标按键状态
-	mu           sync.Mutex
-	mouseButtons map[int]bool
+	mu              sync.Mutex
+	mouseButtons    map[int]bool
+	mouseBtnSince   map[int]time.Time
 
 	// 平滑
 	prevDx float64
@@ -75,6 +76,7 @@ func NewCapture(cfg *Config) *Capture {
 		cfg:           cfg,
 		directionKeys: dirKeys,
 		mouseButtons:  make(map[int]bool),
+		mouseBtnSince: make(map[int]time.Time),
 	}
 }
 
@@ -117,9 +119,16 @@ func (c *Capture) tick() {
 	fdx := float64(dx) * c.cfg.InputSpeed
 	fdy := float64(dy) * c.cfg.InputSpeed
 
-	// 平滑
-	sdx := c.smooth(c.prevDx, fdx)
-	sdy := c.smooth(c.prevDy, fdy)
+	// 平滑（只在有数据时混合，无数据时衰减）
+	var sdx, sdy float64
+	if dx != 0 || dy != 0 {
+		sdx = c.smooth(c.prevDx, fdx)
+		sdy = c.smooth(c.prevDy, fdy)
+	} else {
+		// 没有新数据，使用上一次的值衰减
+		sdx = c.prevDx * 0.8
+		sdy = c.prevDy * 0.8
+	}
 	c.prevDx = sdx
 	c.prevDy = sdy
 
@@ -199,6 +208,14 @@ func (c *Capture) Toggle() {
 		c.prevDy = 0
 		c.accumDx.Swap(0)
 		c.accumDy.Swap(0)
+		// 释放所有鼠标按键
+		c.mu.Lock()
+		for btn := range c.mouseButtons {
+			KeyUp(c.mouseBtnKeyCode(btn))
+			delete(c.mouseButtons, btn)
+			delete(c.mouseBtnSince, btn)
+		}
+		c.mu.Unlock()
 	}
 	if c.active {
 		fmt.Println("\n✅ 捕获已开启")
@@ -238,17 +255,40 @@ func (c *Capture) HandleMouseButton(button int, down bool) {
 		return
 	}
 
+	now := time.Now()
 	if down {
 		if !c.mouseButtons[button] {
 			KeyDown(keyCode)
 			c.mouseButtons[button] = true
+			c.mouseBtnSince[button] = now
 		}
 	} else {
 		if c.mouseButtons[button] {
+			// 最小保持时间防抖
+			if since, ok := c.mouseBtnSince[button]; ok {
+				if now.Sub(since) < MinKeyHoldMs*time.Millisecond {
+					return // 还没到最小保持时间，忽略释放
+				}
+			}
 			KeyUp(keyCode)
 			delete(c.mouseButtons, button)
+			delete(c.mouseBtnSince, button)
 		}
 	}
+}
+
+func (c *Capture) mouseBtnKeyCode(button int) uint16 {
+	switch button {
+	case 1:
+		return c.cfg.MouseLeftButton
+	case 2:
+		return c.cfg.MouseRightButton
+	case 4:
+		return c.cfg.MouseBackButton
+	case 5:
+		return c.cfg.MouseForwardBtn
+	}
+	return 0
 }
 
 func (c *Capture) PrintStatus() {

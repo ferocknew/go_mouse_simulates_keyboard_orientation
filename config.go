@@ -103,13 +103,13 @@ func LoadConfig(path string) (*Config, error) {
 		}
 
 		// 数值配置
-		if key == "keyboard_input_speed" {
+		if key == "move_speed" || key == "keyboard_input_speed" {
 			cleanVal := strings.TrimSuffix(strings.TrimSpace(val), "x")
 			if f, err := strconv.ParseFloat(cleanVal, 64); err == nil && f > 0 {
 				cfg.InputSpeed = f
-				log.Printf("[CONFIG] keyboard_input_speed → %.2f", f)
+				log.Printf("[CONFIG] %s → %.2f", key, f)
 			} else {
-				log.Printf("[CONFIG] 无效的 keyboard_input_speed: %s", val)
+				log.Printf("[CONFIG] 无效的 %s: %s", key, val)
 			}
 			continue
 		}
