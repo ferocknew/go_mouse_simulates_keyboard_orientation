@@ -2,5 +2,8 @@ mouse_up: up
 mouse_down: down
 mouse_left: left
 mouse_right: right
-mouse_left_button: z
-mouse_right_button: x
+mouse_left_button: x
+mouse_right_button: z
+mouse_back_button: v      # 侧键1（浏览器后退）
+mouse_forward_button: enter   # 侧键2（浏览器前进）
+keyboard_input_speed: 1.5

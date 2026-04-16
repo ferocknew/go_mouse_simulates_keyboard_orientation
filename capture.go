@@ -7,26 +7,6 @@ import (
 	"sync"
 )
 
-// macOS 方向键虚拟键码
-const (
-	VKUp    uint16 = 0x7E // 126
-	VKDown  uint16 = 0x7D // 125
-	VKLeft  uint16 = 0x7B // 123
-	VKRight uint16 = 0x7C // 124
-)
-
-// 8 方向扇区 → 按键映射
-var directionKeys = map[int][]uint16{
-	0: {VKRight},          // →
-	1: {VKDown, VKRight},  // ↘
-	2: {VKDown},           // ↓
-	3: {VKDown, VKLeft},   // ↙
-	4: {VKLeft},           // ←
-	5: {VKUp, VKLeft},     // ↖
-	6: {VKUp},             // ↑
-	7: {VKUp, VKRight},    // ↗
-}
-
 var directionNames = map[int]string{
 	0: "→ Right",
 	1: "↘ Down-Right",
@@ -45,13 +25,35 @@ type Capture struct {
 	active  bool
 	pressed map[uint16]bool
 	dirName string
+	cfg     *Config
+
+	// 8 方向扇区 → 按键映射（从配置生成）
+	directionKeys map[int][]uint16
+
+	// 鼠标按键状态
+	mouseButtons map[int]bool
 }
 
-func NewCapture() *Capture {
+func NewCapture(cfg *Config) *Capture {
+	// 从配置构建 8 方向映射
+	dirKeys := map[int][]uint16{
+		0: {cfg.MouseRight},             // →
+		1: {cfg.MouseDown, cfg.MouseRight},  // ↘
+		2: {cfg.MouseDown},              // ↓
+		3: {cfg.MouseDown, cfg.MouseLeft},   // ↙
+		4: {cfg.MouseLeft},              // ←
+		5: {cfg.MouseUp, cfg.MouseLeft},     // ↖
+		6: {cfg.MouseUp},                // ↑
+		7: {cfg.MouseUp, cfg.MouseRight},    // ↗
+	}
+
 	return &Capture{
-		active:  true,
-		pressed: make(map[uint16]bool),
-		dirName: "Idle",
+		active:        true,
+		pressed:       make(map[uint16]bool),
+		dirName:       "Idle",
+		cfg:           cfg,
+		directionKeys: dirKeys,
+		mouseButtons:  make(map[int]bool),
 	}
 }
 
@@ -90,13 +92,55 @@ func (c *Capture) UpdateMouseDelta(dx, dy int64) {
 	sector = ((sector % 8) + 8) % 8
 
 	// 更新按键状态
-	newKeys := directionKeys[sector]
+	newKeys := c.directionKeys[sector]
 	c.updateKeys(newKeys)
 	newDir := directionNames[sector]
 	if c.dirName != newDir {
 		log.Printf("[DIR] dx=%d dy=%d angle=%.1f° sector=%d → %s", dx, dy, angle*180/math.Pi, sector, newDir)
 	}
 	c.dirName = newDir
+}
+
+// HandleMouseButton 处理鼠标按键事件
+func (c *Capture) HandleMouseButton(button int, down bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.active {
+		return
+	}
+
+	var keyCode uint16
+	switch button {
+	case 0: // 左键
+		keyCode = c.cfg.MouseLeftButton
+	case 1: // 右键
+		keyCode = c.cfg.MouseRightButton
+	case 3: // 后退键 (Button 4)
+		keyCode = c.cfg.MouseBackButton
+	case 4: // 前进键 (Button 5)
+		keyCode = c.cfg.MouseForwardBtn
+	default:
+		return
+	}
+
+	if keyCode == 0 {
+		return
+	}
+
+	if down {
+		if !c.mouseButtons[button] {
+			KeyDown(keyCode)
+			c.mouseButtons[button] = true
+			log.Printf("[MOUSE] Button %d DOWN → keyCode 0x%02X", button, keyCode)
+		}
+	} else {
+		if c.mouseButtons[button] {
+			KeyUp(keyCode)
+			delete(c.mouseButtons, button)
+			log.Printf("[MOUSE] Button %d UP → keyCode 0x%02X", button, keyCode)
+		}
+	}
 }
 
 func (c *Capture) updateKeys(newKeys []uint16) {

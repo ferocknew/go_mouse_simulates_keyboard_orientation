@@ -30,9 +30,16 @@ int checkAccessibility(void) {
 }
 
 int createEventTap(void) {
+    // 鼠标移动 + 鼠标按下/释放（左、右、其他）+ 键盘按下
     CGEventMask eventMask =
         CGEventMaskBit(kCGEventMouseMoved) |
         CGEventMaskBit(kCGEventLeftMouseDragged) |
+        CGEventMaskBit(kCGEventLeftMouseDown) |
+        CGEventMaskBit(kCGEventLeftMouseUp) |
+        CGEventMaskBit(kCGEventRightMouseDown) |
+        CGEventMaskBit(kCGEventRightMouseUp) |
+        CGEventMaskBit(kCGEventOtherMouseDown) |
+        CGEventMaskBit(kCGEventOtherMouseUp) |
         CGEventMaskBit(kCGEventKeyDown);
 
     fprintf(stderr, "[DEBUG] 正在创建 EventTap...\n");

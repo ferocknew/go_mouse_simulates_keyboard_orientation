@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -14,6 +15,18 @@ func main() {
 	fmt.Println("Ctrl+ESC  切换捕获")
 	fmt.Println("Ctrl+C    退出")
 	fmt.Println("──────────────────────")
+
+	// 加载配置（优先当前目录，其次可执行文件同目录）
+	cfgPath := "config.yaml"
+	if _, err := os.Stat(cfgPath); err != nil {
+		exePath, _ := os.Executable()
+		cfgPath = filepath.Join(filepath.Dir(exePath), "config.yaml")
+	}
+
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		log.Fatalf("[FATAL] 加载配置失败: %v", err)
+	}
 
 	// 检查辅助功能权限
 	if !CheckAccessibility() {
@@ -27,7 +40,7 @@ func main() {
 		log.Println("[OK] 辅助功能权限已授予")
 	}
 
-	cap := NewCapture()
+	cap := NewCapture(cfg)
 	done := make(chan struct{})
 
 	errCh := make(chan error, 1)

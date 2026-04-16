@@ -37,15 +37,36 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 	}
 
 	switch eventType {
+	// 鼠标移动
 	case C.kCGEventMouseMoved, C.kCGEventLeftMouseDragged:
 		dx := C.CGEventGetIntegerValueField(event, C.kCGMouseEventDeltaX)
 		dy := C.CGEventGetIntegerValueField(event, C.kCGMouseEventDeltaY)
 		captureRef.UpdateMouseDelta(int64(dx), int64(dy))
 
+	// 鼠标左键
+	case C.kCGEventLeftMouseDown:
+		captureRef.HandleMouseButton(0, true)
+	case C.kCGEventLeftMouseUp:
+		captureRef.HandleMouseButton(0, false)
+
+	// 鼠标右键
+	case C.kCGEventRightMouseDown:
+		captureRef.HandleMouseButton(1, true)
+	case C.kCGEventRightMouseUp:
+		captureRef.HandleMouseButton(1, false)
+
+	// 鼠标其他按键（侧键）
+	case C.kCGEventOtherMouseDown:
+		btn := int(C.CGEventGetIntegerValueField(event, C.kCGMouseEventButtonNumber))
+		captureRef.HandleMouseButton(btn, true)
+	case C.kCGEventOtherMouseUp:
+		btn := int(C.CGEventGetIntegerValueField(event, C.kCGMouseEventButtonNumber))
+		captureRef.HandleMouseButton(btn, false)
+
+	// 键盘
 	case C.kCGEventKeyDown:
 		keycode := C.CGEventGetIntegerValueField(event, C.kCGKeyboardEventKeycode)
 		flags := C.CGEventGetFlags(event)
-		log.Printf("[KEY] keycode=%d flags=0x%X", int(keycode), uint32(flags))
 		// Ctrl+ESC (keycode 0x35) 切换捕获状态
 		if keycode == 0x35 && (flags&C.kCGEventFlagMaskControl) != 0 {
 			log.Printf("[HOTKEY] Ctrl+ESC 检测到，切换捕获状态")
