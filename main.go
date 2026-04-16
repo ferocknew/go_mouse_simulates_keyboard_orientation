@@ -43,6 +43,9 @@ func main() {
 	cap := NewCapture(cfg)
 	done := make(chan struct{})
 
+	// 启动 tick 循环（1ms 节拍处理方向）
+	go cap.RunTickLoop(done)
+
 	errCh := make(chan error, 1)
 	go func() {
 		if err := StartEventTap(cap, done); err != nil {

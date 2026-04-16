@@ -2,7 +2,7 @@ package main
 
 /*
 #cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework CoreGraphics -framework CoreFoundation -framework ApplicationServices
+#cgo LDFLAGS: -framework CoreGraphics -framework CoreFoundation -framework ApplicationServices -framework IOKit
 
 #include "darwin.h"
 */
@@ -30,6 +30,8 @@ func KeyUp(keyCode uint16) {
 	C.sendKeyUp(C.CGKeyCode(keyCode))
 }
 
+// ===== CGEventTap 回调（鼠标移动 + 键盘热键）=====
+
 //export eventTapCallback
 func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.CGEventRef, userInfo unsafe.Pointer) C.CGEventRef {
 	if captureRef == nil {
@@ -37,37 +39,14 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 	}
 
 	switch eventType {
-	// 鼠标移动
 	case C.kCGEventMouseMoved, C.kCGEventLeftMouseDragged:
 		dx := C.CGEventGetIntegerValueField(event, C.kCGMouseEventDeltaX)
 		dy := C.CGEventGetIntegerValueField(event, C.kCGMouseEventDeltaY)
-		captureRef.UpdateMouseDelta(int64(dx), int64(dy))
+		captureRef.AddDelta(int64(dx), int64(dy))
 
-	// 鼠标左键
-	case C.kCGEventLeftMouseDown:
-		captureRef.HandleMouseButton(0, true)
-	case C.kCGEventLeftMouseUp:
-		captureRef.HandleMouseButton(0, false)
-
-	// 鼠标右键
-	case C.kCGEventRightMouseDown:
-		captureRef.HandleMouseButton(1, true)
-	case C.kCGEventRightMouseUp:
-		captureRef.HandleMouseButton(1, false)
-
-	// 鼠标其他按键（侧键）
-	case C.kCGEventOtherMouseDown:
-		btn := int(C.CGEventGetIntegerValueField(event, C.kCGMouseEventButtonNumber))
-		captureRef.HandleMouseButton(btn, true)
-	case C.kCGEventOtherMouseUp:
-		btn := int(C.CGEventGetIntegerValueField(event, C.kCGMouseEventButtonNumber))
-		captureRef.HandleMouseButton(btn, false)
-
-	// 键盘
 	case C.kCGEventKeyDown:
 		keycode := C.CGEventGetIntegerValueField(event, C.kCGKeyboardEventKeycode)
 		flags := C.CGEventGetFlags(event)
-		// Ctrl+ESC (keycode 0x35) 切换捕获状态
 		if keycode == 0x35 && (flags&C.kCGEventFlagMaskControl) != 0 {
 			log.Printf("[HOTKEY] Ctrl+ESC 检测到，切换捕获状态")
 			captureRef.Toggle()
@@ -84,6 +63,23 @@ func eventTapCallback(proxy C.CGEventTapProxy, eventType C.CGEventType, event C.
 	return event
 }
 
+// ===== IOHIDManager 回调（鼠标按键，包括侧键）=====
+// usage: 1=左键, 2=右键, 3=中键, 4=后退, 5=前进
+
+//export hidButtonCallback
+func hidButtonCallback(usage C.int, pressed C.int) {
+	if captureRef == nil {
+		return
+	}
+
+	btn := int(usage)
+	down := int(pressed) == 1
+	log.Printf("[HID] Button usage=%d pressed=%d", btn, int(pressed))
+	captureRef.HandleMouseButton(btn, down)
+}
+
+// ===== 启动/停止 =====
+
 func StartEventTap(cap *Capture, done chan struct{}) error {
 	captureRef = cap
 	runtime.LockOSThread()
@@ -91,6 +87,12 @@ func StartEventTap(cap *Capture, done chan struct{}) error {
 
 	log.Println("[INIT] 正在启动事件监听...")
 
+	// 启动 IOHIDManager（鼠标按键）
+	if C.startHIDManager() == 0 {
+		log.Println("[WARN] IOHIDManager 启动失败，鼠标按键可能不可用")
+	}
+
+	// 启动 CGEventTap（鼠标移动 + 键盘热键）
 	if C.createEventTap() == 0 {
 		return fmt.Errorf("无法创建事件监听 - 请在「系统设置 > 隐私与安全性 > 辅助功能」中授权")
 	}
@@ -101,6 +103,7 @@ func StartEventTap(cap *Capture, done chan struct{}) error {
 		<-done
 		log.Println("[EXIT] 收到退出信号，停止事件监听")
 		C.stopEventTap()
+		C.stopHIDManager()
 		C.CFRunLoopStop(C.CFRunLoopGetCurrent())
 	}()
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -38,6 +39,7 @@ type Config struct {
 	MouseRightButton uint16
 	MouseBackButton  uint16
 	MouseForwardBtn  uint16
+	InputSpeed       float64
 }
 
 func defaultConfig() *Config {
@@ -50,6 +52,7 @@ func defaultConfig() *Config {
 		MouseRightButton: 0x07, // x
 		MouseBackButton:  0x09, // v
 		MouseForwardBtn:  0x24, // enter
+		InputSpeed:       1.0,
 	}
 }
 
@@ -68,14 +71,14 @@ func LoadConfig(path string) (*Config, error) {
 
 	// 简单的 YAML flat key-value 解析（无需第三方库）
 	mapping := map[string]*uint16{
-		"mouse_up":            &cfg.MouseUp,
-		"mouse_down":          &cfg.MouseDown,
-		"mouse_left":          &cfg.MouseLeft,
-		"mouse_right":         &cfg.MouseRight,
-		"mouse_left_button":   &cfg.MouseLeftButton,
-		"mouse_right_button":  &cfg.MouseRightButton,
-		"mouse_back_button":   &cfg.MouseBackButton,
-		"mouse_forward_button": &cfg.MouseForwardBtn,
+		"mouse_up":          &cfg.MouseUp,
+		"mouse_down":        &cfg.MouseDown,
+		"mouse_left":        &cfg.MouseLeft,
+		"mouse_right":       &cfg.MouseRight,
+		"mouse_button_1":    &cfg.MouseLeftButton,  // 左键
+		"mouse_button_2":    &cfg.MouseRightButton, // 右键
+		"mouse_button_4":    &cfg.MouseBackButton,  // 侧键后退
+		"mouse_button_5":    &cfg.MouseForwardBtn,  // 侧键前进
 	}
 
 	scanner := bufio.NewScanner(f)
@@ -97,6 +100,18 @@ func LoadConfig(path string) (*Config, error) {
 		// 去掉行内注释
 		if idx := strings.Index(val, "#"); idx >= 0 {
 			val = strings.TrimSpace(val[:idx])
+		}
+
+		// 数值配置
+		if key == "keyboard_input_speed" {
+			cleanVal := strings.TrimSuffix(strings.TrimSpace(val), "x")
+			if f, err := strconv.ParseFloat(cleanVal, 64); err == nil && f > 0 {
+				cfg.InputSpeed = f
+				log.Printf("[CONFIG] keyboard_input_speed → %.2f", f)
+			} else {
+				log.Printf("[CONFIG] 无效的 keyboard_input_speed: %s", val)
+			}
+			continue
 		}
 
 		ptr, ok := mapping[key]

@@ -5,6 +5,8 @@ import (
 	"log"
 	"math"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 var directionNames = map[int]string{
@@ -18,38 +20,57 @@ var directionNames = map[int]string{
 	7: "↗ Up-Right",
 }
 
-const Deadzone = 2
+const (
+	Deadzone      = 2
+	SmoothFactor  = 0.2
+	MinKeyHoldMs  = 20 // 按键最小保持时间
+	TickInterval  = time.Millisecond
+)
 
 type Capture struct {
-	mu      sync.Mutex
 	active  bool
-	pressed map[uint16]bool
 	dirName string
 	cfg     *Config
 
 	// 8 方向扇区 → 按键映射（从配置生成）
 	directionKeys map[int][]uint16
 
+	// 鼠标增量（原子累积）
+	accumDx atomic.Int32
+	accumDy atomic.Int32
+
+	// 按键状态（tick loop 独占，无需锁）
+	pressed    map[uint16]bool
+	keySince   map[uint16]time.Time // 每个按键按下的时间
+
 	// 鼠标按键状态
+	mu           sync.Mutex
 	mouseButtons map[int]bool
+
+	// 平滑
+	prevDx float64
+	prevDy float64
+
+	// 控制
+	muActive sync.Mutex
 }
 
 func NewCapture(cfg *Config) *Capture {
-	// 从配置构建 8 方向映射
 	dirKeys := map[int][]uint16{
-		0: {cfg.MouseRight},             // →
-		1: {cfg.MouseDown, cfg.MouseRight},  // ↘
-		2: {cfg.MouseDown},              // ↓
-		3: {cfg.MouseDown, cfg.MouseLeft},   // ↙
-		4: {cfg.MouseLeft},              // ←
-		5: {cfg.MouseUp, cfg.MouseLeft},     // ↖
-		6: {cfg.MouseUp},                // ↑
-		7: {cfg.MouseUp, cfg.MouseRight},    // ↗
+		0: {cfg.MouseRight},
+		1: {cfg.MouseDown, cfg.MouseRight},
+		2: {cfg.MouseDown},
+		3: {cfg.MouseDown, cfg.MouseLeft},
+		4: {cfg.MouseLeft},
+		5: {cfg.MouseUp, cfg.MouseLeft},
+		6: {cfg.MouseUp},
+		7: {cfg.MouseUp, cfg.MouseRight},
 	}
 
 	return &Capture{
 		active:        true,
 		pressed:       make(map[uint16]bool),
+		keySince:      make(map[uint16]time.Time),
 		dirName:       "Idle",
 		cfg:           cfg,
 		directionKeys: dirKeys,
@@ -57,12 +78,127 @@ func NewCapture(cfg *Config) *Capture {
 	}
 }
 
+// AddDelta 由 CGEventTap 回调调用，原子累积鼠标增量
+func (c *Capture) AddDelta(dx, dy int64) {
+	c.accumDx.Add(int32(dx))
+	c.accumDy.Add(int32(dy))
+}
+
+// RunTickLoop 在独立 goroutine 中运行 tick 循环
+func (c *Capture) RunTickLoop(done <-chan struct{}) {
+	ticker := time.NewTicker(TickInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			c.releaseAll()
+			return
+		case <-ticker.C:
+			c.tick()
+		}
+	}
+}
+
+func (c *Capture) tick() {
+	c.muActive.Lock()
+	active := c.active
+	c.muActive.Unlock()
+
+	if !active {
+		return
+	}
+
+	// 取出并重置累积增量
+	dx := int64(c.accumDx.Swap(0))
+	dy := int64(c.accumDy.Swap(0))
+
+	// 灵敏度缩放
+	fdx := float64(dx) * c.cfg.InputSpeed
+	fdy := float64(dy) * c.cfg.InputSpeed
+
+	// 平滑
+	sdx := c.smooth(c.prevDx, fdx)
+	sdy := c.smooth(c.prevDy, fdy)
+	c.prevDx = sdx
+	c.prevDy = sdy
+
+	// Deadzone
+	if abs64(int64(sdx)) < Deadzone && abs64(int64(sdy)) < Deadzone {
+		c.releaseAll()
+		c.dirName = "Idle"
+		return
+	}
+
+	// 计算方向
+	angle := math.Atan2(sdy, sdx)
+	sector := int(math.Round(angle / (math.Pi / 4)))
+	sector = ((sector % 8) + 8) % 8
+
+	newKeys := c.directionKeys[sector]
+	c.updateKeys(newKeys)
+
+	newDir := directionNames[sector]
+	if c.dirName != newDir {
+		log.Printf("[DIR] raw=(%d,%d) smooth=(%.1f,%.1f) angle=%.1f° → %s", dx, dy, sdx, sdy, angle*180/math.Pi, newDir)
+	}
+	c.dirName = newDir
+}
+
+func (c *Capture) smooth(prev, cur float64) float64 {
+	return prev*SmoothFactor + cur*(1-SmoothFactor)
+}
+
+func (c *Capture) updateKeys(newKeys []uint16) {
+	now := time.Now()
+	newSet := make(map[uint16]bool, len(newKeys))
+	for _, k := range newKeys {
+		newSet[k] = true
+	}
+
+	// 释放旧键（检查最小保持时间）
+	for k := range c.pressed {
+		if !newSet[k] {
+			if since, ok := c.keySince[k]; ok {
+				if now.Sub(since) < MinKeyHoldMs*time.Millisecond {
+					continue // 保持，不释放
+				}
+			}
+			KeyUp(k)
+			delete(c.keySince, k)
+		}
+	}
+
+	// 按下新键
+	for k := range newSet {
+		if !c.pressed[k] {
+			KeyDown(k)
+			c.keySince[k] = now
+		}
+	}
+
+	c.pressed = newSet
+}
+
+func (c *Capture) releaseAll() {
+	for k := range c.pressed {
+		KeyUp(k)
+	}
+	c.pressed = make(map[uint16]bool)
+	c.keySince = make(map[uint16]time.Time)
+}
+
+// Toggle 切换捕获状态
 func (c *Capture) Toggle() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.muActive.Lock()
+	defer c.muActive.Unlock()
 	c.active = !c.active
 	if !c.active {
 		c.releaseAll()
+		c.prevDx = 0
+		c.prevDy = 0
+		c.accumDx.Swap(0)
+		c.accumDy.Swap(0)
 	}
 	if c.active {
 		fmt.Println("\n✅ 捕获已开启")
@@ -71,54 +207,28 @@ func (c *Capture) Toggle() {
 	}
 }
 
-func (c *Capture) UpdateMouseDelta(dx, dy int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if !c.active {
-		return
-	}
-
-	// Deadzone 检查
-	if abs64(dx) < Deadzone && abs64(dy) < Deadzone {
-		c.releaseAll()
-		c.dirName = "Idle"
-		return
-	}
-
-	// 计算角度和方向扇区
-	angle := math.Atan2(float64(dy), float64(dx))
-	sector := int(math.Round(angle / (math.Pi / 4)))
-	sector = ((sector % 8) + 8) % 8
-
-	// 更新按键状态
-	newKeys := c.directionKeys[sector]
-	c.updateKeys(newKeys)
-	newDir := directionNames[sector]
-	if c.dirName != newDir {
-		log.Printf("[DIR] dx=%d dy=%d angle=%.1f° sector=%d → %s", dx, dy, angle*180/math.Pi, sector, newDir)
-	}
-	c.dirName = newDir
-}
-
 // HandleMouseButton 处理鼠标按键事件
 func (c *Capture) HandleMouseButton(button int, down bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if !c.active {
+	c.muActive.Lock()
+	active := c.active
+	c.muActive.Unlock()
+
+	if !active {
 		return
 	}
 
 	var keyCode uint16
 	switch button {
-	case 0: // 左键
+	case 1: // 左键
 		keyCode = c.cfg.MouseLeftButton
-	case 1: // 右键
+	case 2: // 右键
 		keyCode = c.cfg.MouseRightButton
-	case 3: // 后退键 (Button 4)
+	case 4: // 后退键 (XButton1)
 		keyCode = c.cfg.MouseBackButton
-	case 4: // 前进键 (Button 5)
+	case 5: // 前进键 (XButton2)
 		keyCode = c.cfg.MouseForwardBtn
 	default:
 		return
@@ -132,56 +242,26 @@ func (c *Capture) HandleMouseButton(button int, down bool) {
 		if !c.mouseButtons[button] {
 			KeyDown(keyCode)
 			c.mouseButtons[button] = true
-			log.Printf("[MOUSE] Button %d DOWN → keyCode 0x%02X", button, keyCode)
 		}
 	} else {
 		if c.mouseButtons[button] {
 			KeyUp(keyCode)
 			delete(c.mouseButtons, button)
-			log.Printf("[MOUSE] Button %d UP → keyCode 0x%02X", button, keyCode)
 		}
 	}
-}
-
-func (c *Capture) updateKeys(newKeys []uint16) {
-	newSet := make(map[uint16]bool, len(newKeys))
-	for _, k := range newKeys {
-		newSet[k] = true
-	}
-
-	// 释放不再需要的旧键
-	for k := range c.pressed {
-		if !newSet[k] {
-			KeyUp(k)
-		}
-	}
-
-	// 按下新键
-	for k := range newSet {
-		if !c.pressed[k] {
-			KeyDown(k)
-		}
-	}
-
-	c.pressed = newSet
-}
-
-func (c *Capture) releaseAll() {
-	for k := range c.pressed {
-		KeyUp(k)
-	}
-	c.pressed = make(map[uint16]bool)
 }
 
 func (c *Capture) PrintStatus() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.muActive.Lock()
+	active := c.active
+	dir := c.dirName
+	c.muActive.Unlock()
 
 	status := "OFF"
-	if c.active {
+	if active {
 		status = "ON"
 	}
-	fmt.Printf("\r[%s] %s          ", status, c.dirName)
+	fmt.Printf("\r[%s] %s          ", status, dir)
 }
 
 func abs64(x int64) int64 {
