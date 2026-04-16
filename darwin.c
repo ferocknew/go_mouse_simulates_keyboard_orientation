@@ -1,5 +1,6 @@
 #include "darwin.h"
 #include <CoreGraphics/CoreGraphics.h>
+#include <stdio.h>
 
 // Go 回调函数的声明
 extern CGEventRef eventTapCallback(CGEventTapProxy proxy,
@@ -24,11 +25,17 @@ void sendKeyUp(CGKeyCode key) {
     }
 }
 
+int checkAccessibility(void) {
+    return AXIsProcessTrusted();
+}
+
 int createEventTap(void) {
     CGEventMask eventMask =
         CGEventMaskBit(kCGEventMouseMoved) |
         CGEventMaskBit(kCGEventLeftMouseDragged) |
         CGEventMaskBit(kCGEventKeyDown);
+
+    fprintf(stderr, "[DEBUG] 正在创建 EventTap...\n");
 
     eventTapPort = CGEventTapCreate(
         kCGSessionEventTap,
@@ -40,15 +47,29 @@ int createEventTap(void) {
     );
 
     if (!eventTapPort) {
+        fprintf(stderr, "[ERROR] CGEventTapCreate 返回 NULL\n");
         return 0;
     }
+
+    fprintf(stderr, "[DEBUG] EventTap 创建成功, 检查是否启用...\n");
+
+    if (!CGEventTapIsEnabled(eventTapPort)) {
+        fprintf(stderr, "[WARN] EventTap 已创建但未启用，尝试启用...\n");
+        CGEventTapEnable(eventTapPort, true);
+        if (!CGEventTapIsEnabled(eventTapPort)) {
+            fprintf(stderr, "[ERROR] 无法启用 EventTap，可能缺少辅助功能权限\n");
+            return 0;
+        }
+    }
+
+    fprintf(stderr, "[DEBUG] EventTap 已启用\n");
 
     CFRunLoopSourceRef source = CFMachPortCreateRunLoopSource(
         kCFAllocatorDefault, eventTapPort, 0);
     runLoopSource = source;
 
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
-    CGEventTapEnable(eventTapPort, true);
+
     return 1;
 }
 

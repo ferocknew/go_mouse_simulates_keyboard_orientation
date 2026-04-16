@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sync"
 )
@@ -91,7 +92,11 @@ func (c *Capture) UpdateMouseDelta(dx, dy int64) {
 	// 更新按键状态
 	newKeys := directionKeys[sector]
 	c.updateKeys(newKeys)
-	c.dirName = directionNames[sector]
+	newDir := directionNames[sector]
+	if c.dirName != newDir {
+		log.Printf("[DIR] dx=%d dy=%d angle=%.1f° sector=%d → %s", dx, dy, angle*180/math.Pi, sector, newDir)
+	}
+	c.dirName = newDir
 }
 
 func (c *Capture) updateKeys(newKeys []uint16) {
