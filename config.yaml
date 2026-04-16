@@ -8,3 +8,5 @@ mouse_button_4: v # 侧键，前进
 mouse_button_5: enter # 侧键，后退
 mouse_sampling_rate: 500 # 鼠标移动采样率
 move_inertia_time: 0.3 # 单位 S 秒
+mouse_reduces_noise: 0.2 # 忽略微小的移动
+keep_move: false # 停下鼠标，是否保持移动方向

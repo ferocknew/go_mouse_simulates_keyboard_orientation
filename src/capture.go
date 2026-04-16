@@ -131,8 +131,14 @@ func (c *Capture) tick() {
 	c.prevDx = sdx
 	c.prevDy = sdy
 
-	// Deadzone
-	if abs64(int64(sdx)) < Deadzone && abs64(int64(sdy)) < Deadzone {
+	// 止动判定：使用 max(Deadzone, NoiseThreshold) 作为有效阈值
+	threshold := math.Max(float64(Deadzone), c.cfg.NoiseThreshold)
+	if math.Abs(sdx) < threshold && math.Abs(sdy) < threshold {
+			// keep_move 模式：无限保持最后方向
+			if c.cfg.KeepMove && len(c.lastDirKeys) > 0 {
+				c.updateKeys(c.lastDirKeys)
+				return
+			}
 		// 惯性滑行：鼠标停住后，方向键继续保持一段时间再释放
 		if len(c.lastDirKeys) > 0 && time.Since(c.lastMoveTime) < c.cfg.CoastDuration {
 			c.updateKeys(c.lastDirKeys)

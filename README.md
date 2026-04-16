@@ -1,316 +1,99 @@
-## 项目说明
+# 🎮 VirtualGamepad
 
+鼠标 → 8方向键盘映射工具。把鼠标当成模拟摇杆，映射成数字方向键。
 
-# 🎮 鼠标 → 8方向键（↑↓←→）映射方案（Go 跨平台）
+## 快速开始
 
----
-
-# 📌 一、目标（重新定义）
-
-实现：
-
-* 鼠标移动 → 映射为 8方向：
-
-  * ↑ ↓ ← →
-  * ↖ ↗ ↙ ↘
-* 输出键盘：
-
-  * 方向键组合（例如 ↑ + →）
-* 鼠标持续移动 → 持续 KeyDown
-* 停止移动 → KeyUp
-
----
-
-# 🧠 二、核心思路（关键）
-
-## 👉 不再用“阈值判断轴”
-
-而是：
-
-> 🎯 使用“向量角度（Angle）”判断方向
-
----
-
-# 📐 三、方向计算（核心算法）
-
-## 输入：
-
-```go
-dx := input.DeltaX
-dy := input.DeltaY
+```bash
+CGO_ENABLED=1 go build -o virtualgamepad ./src
+./virtualgamepad
 ```
 
----
+需要 macOS 辅助功能权限：系统设置 > 隐私与安全性 > 辅助功能。
 
-## 1️⃣ 计算角度
+## 操作
 
-```go
-angle := math.Atan2(float64(dy), float64(dx)) // -π ~ π
+| 操作 | 功能 |
+|---|---|
+| 移动鼠标 | 映射为 8 方向按键（持续移动 = 持续 KeyDown） |
+| 鼠标按键 | 映射为配置的键盘按键 |
+| Ctrl+ESC | 切换捕获模式（开启时隐藏光标并屏蔽系统鼠标） |
+| Ctrl+C | 退出 |
+
+## 方向映射
+
+```
+        ↑          ↗ = ↑ + →
+    ↖       ↗      ↖ = ↑ + ←
+  ←     ●     →    ↙ = ↓ + ←
+    ↙       ↘      ↘ = ↓ + →
+        ↓
 ```
 
----
+使用 `atan2(dy, dx)` 计算角度，每 45° 一个扇区，共 8 方向。
 
-## 2️⃣ 转换为 8方向（每45°）
+## 配置文件 config.yaml
 
-```go
-sector := int(math.Round(angle / (math.Pi / 4))) % 8
+```yaml
+# 方向映射
+mouse_up: up
+mouse_down: down
+mouse_left: left
+mouse_right: right
+
+# 鼠标按键映射（1=左键, 2=右键, 4=后退侧键, 5=前进侧键）
+mouse_button_1: x
+mouse_button_2: z
+mouse_button_4: v
+mouse_button_5: enter
+
+# 采样率（Hz），决定检测鼠标移动的频率
+mouse_sampling_rate: 500
+
+# 惯性滑行（秒），鼠标停住后方向键继续保持的时长
+move_inertia_time: 0.3
+
+# 噪声过滤，smoothed delta 低于此值视为停止（过滤手抖）
+mouse_reduces_noise: 0.2
 ```
 
----
+键名支持：a-z, 0-9, 方向键(up/down/left/right), 功能键(enter/space/esc/tab/delete), 修饰键(shift/ctrl/alt/cmd)。
 
-## 3️⃣ 映射表
+## 核心机制
 
-```go
-var directions = map[int][]string{
-    0: {"Right"},
-    1: {"Down", "Right"},
-    2: {"Down"},
-    3: {"Down", "Left"},
-    4: {"Left"},
-    5: {"Up", "Left"},
-    6: {"Up"},
-    7: {"Up", "Right"},
-}
+### 采样 → 止动判定 → 方向输出
+
+每个 tick（间隔 = 1s / sampling_rate）：
+
+1. 取累积鼠标 delta → 平滑滤波
+2. 止动判定：`|delta| < max(Deadzone, NoiseThreshold)` → 视为停止
+3. 停止时进入惯性滑行（保持最后方向键，持续 move_inertia_time）
+4. 滑行超时 → releaseAll
+5. 未停止 → `atan2` 算方向 → 按键状态 diff 输出
+
+### 鼠标事件屏蔽
+
+捕获模式激活时：
+- CGEventTap 以拦截模式运行，吞掉鼠标移动和点击事件（返回 NULL）
+- `CGDisplayHideCursor` 隐藏光标
+- 鼠标按键通过 IOHIDManager（HID 层）捕获，不受 CGEventTap 拦截影响
+
+### 按键防抖
+
+- `MinKeyHoldMs = 50ms`：按键按下后至少保持 50ms 才能释放
+- 延迟释放的键保留在跟踪 map 中，防止丢失 KeyUp
+
+## 项目结构
+
 ```
-
----
-
-# 🎮 四、输出逻辑（关键区别）
-
-## ❗不是 KeyTap（按一下）
-
-而是：
-
-> ✔ KeyDown（按住）
-> ✔ KeyUp（释放）
-
----
-
-## 状态管理（重点）
-
-```go
-type KeyState struct {
-    pressed map[string]bool
-}
+├── config.yaml          # 配置文件
+├── go.mod               # Go module
+├── CLAUDE.md            # Claude Code 开发指引
+├── src/
+│   ├── main.go          # 入口：信号处理 + 状态显示
+│   ├── capture.go       # 核心逻辑：tick 循环、方向计算、按键管理
+│   ├── config.go        # 配置解析
+│   ├── darwin_input.go  # CGO 桥接：CGEventTap/IOHIDManager 回调
+│   ├── darwin.c         # macOS C 层：EventTap、HIDManager、光标、键盘输出
+│   └── darwin.h         # C 头文件
 ```
-
----
-
-## 更新逻辑
-
-```go
-func UpdateKeys(newKeys []string, state *KeyState) {
-
-    newSet := make(map[string]bool)
-    for _, k := range newKeys {
-        newSet[k] = true
-    }
-
-    // 释放旧键
-    for k := range state.pressed {
-        if !newSet[k] {
-            KeyUp(k)
-        }
-    }
-
-    // 按下新键
-    for k := range newSet {
-        if !state.pressed[k] {
-            KeyDown(k)
-        }
-    }
-
-    state.pressed = newSet
-}
-```
-
----
-
-# 🧊 五、Deadzone（防抖）
-
-```go
-func IsZero(dx, dy int) bool {
-    return abs(dx) < 2 && abs(dy) < 2
-}
-```
-
-👉 如果静止：
-
-```go
-ReleaseAllKeys()
-```
-
----
-
-# ⚡ 六、完整主循环
-
-```go
-for {
-    dx, dy := ReadMouseDelta()
-
-    if IsZero(dx, dy) {
-        ReleaseAllKeys()
-        continue
-    }
-
-    angle := math.Atan2(float64(dy), float64(dx))
-    sector := int(math.Round(angle / (math.Pi / 4))) & 7
-
-    keys := directions[sector]
-
-    UpdateKeys(keys, &state)
-}
-```
-
----
-
-# 🎛 七、UI 配置（重点）
-
-## 配置文件
-
-```json
-{
-  "bindings": {
-    "Up": "up",
-    "Down": "down",
-    "Left": "left",
-    "Right": "right"
-  },
-  "deadzone": 2,
-  "sensitivity": 1.0
-}
-```
-
----
-
-## UI 功能
-
-### ✔ 按键映射
-
-* ↑ → 可改为 W
-* ↓ → 可改为 S
-
----
-
-### ✔ 参数调节
-
-* Deadzone
-* 灵敏度
-* 响应速度
-
----
-
-# 🧱 八、平台实现
-
-## 🍎 macOS
-
-* 输入：CGEventTap
-* 输出：CGEvent（KeyDown / KeyUp）
-
----
-
-## 🪟 Windows
-
-* 输入：Raw Input
-* 输出：SendInput
-
----
-
-# ⚠️ 九、关键细节（容易踩坑）
-
-## ❗ 1. 对角方向必须同时按两个键
-
-例如：
-
-```text
-↗ = Up + Right
-```
-
----
-
-## ❗ 2. 不要频繁 KeyTap
-
-错误：
-
-```text
-Up Down Up Down Up Down
-```
-
-正确：
-
-```text
-KeyDown → 持续 → KeyUp
-```
-
----
-
-## ❗ 3. 必须做状态缓存
-
-否则会：
-
-* 键盘抖动
-* 输入卡顿
-
----
-
-## ❗ 4. 鼠标必须用“增量”（delta）
-
-不能用：
-
-```text
-绝对坐标
-```
-
-必须用：
-
-```text
-移动变化 dx/dy
-```
-
----
-
-# 🚀 十、进阶优化（强烈建议）
-
-## 🎯 1. 灵敏度曲线
-
-```go
-dx *= sensitivity
-dy *= sensitivity
-```
-
----
-
-## 🎯 2. 平滑（防抖）
-
-```go
-dx = Smooth(prevX, dx, 0.2)
-dy = Smooth(prevY, dy, 0.2)
-```
-
----
-
-## 🎯 3. 方向锁定（高级）
-
-防止：
-
-```text
-↗ ↘ ↗ ↘ 抖动
-```
-
-👉 加 hysteresis（滞后）
-
----
-
-# 🎯 十一、总结
-
-👉 鼠标 → 8方向 = 用“角度”
-👉 持续输入 = 用 KeyDown / KeyUp
-👉 核心是状态机，不是触发器
-
----
-
-# 🧠 一句话核心
-
-> “把鼠标当成一个模拟摇杆（Analog Stick），再映射成数字方向键”
-
----

@@ -42,6 +42,8 @@ type Config struct {
 	MouseForwardBtn  uint16
 	TickInterval     time.Duration // 采样间隔（由 mouse_sampling_rate 计算）
 	CoastDuration    time.Duration // 惯性滑行时间
+	NoiseThreshold   float64       // 噪声过滤阈值（smoothed delta 低于此值视为停止）
+	KeepMove         bool          // 停下鼠标后是否保持移动方向
 }
 
 func defaultConfig() *Config {
@@ -56,6 +58,7 @@ func defaultConfig() *Config {
 		MouseForwardBtn:  0x24, // enter
 		TickInterval:    time.Millisecond,
 		CoastDuration:   80 * time.Millisecond,
+		NoiseThreshold:  0,
 	}
 }
 
@@ -120,6 +123,26 @@ func LoadConfig(path string) (*Config, error) {
 			if f, err := strconv.ParseFloat(val, 64); err == nil && f >= 0 {
 				cfg.CoastDuration = time.Duration(f * float64(time.Second))
 				log.Printf("[CONFIG] %s → %v", key, cfg.CoastDuration)
+			} else {
+				log.Printf("[CONFIG] 无效的 %s: %s", key, val)
+			}
+			continue
+		}
+
+		if key == "mouse_reduces_noise" {
+			if f, err := strconv.ParseFloat(val, 64); err == nil && f > 0 {
+				cfg.NoiseThreshold = f
+				log.Printf("[CONFIG] %s → %.2f", key, f)
+			} else {
+				log.Printf("[CONFIG] 无效的 %s: %s", key, val)
+			}
+			continue
+		}
+
+		if key == "keep_move" {
+			if b, err := strconv.ParseBool(val); err == nil {
+				cfg.KeepMove = b
+				log.Printf("[CONFIG] %s → %v", key, b)
 			} else {
 				log.Printf("[CONFIG] 无效的 %s: %s", key, val)
 			}
