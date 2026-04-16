@@ -20,10 +20,7 @@ jobs:
 
       - name: Package
         run: |
-          mkdir dist
-          cp virtualgamepad config.yaml dist/
-          cd dist
-          zip -j "$GITHUB_WORKSPACE/virtualgamepad-${{ github.ref_name }}-darwin-arm64.zip" .
+          zip -j "virtualgamepad-${{ github.ref_name }}-darwin-arm64.zip" virtualgamepad config.yaml
 
       - uses: actions/upload-artifact@v4
         with:
@@ -40,7 +37,9 @@ jobs:
           go-version: '1.22'
 
       - name: Build
-        run: CGO_ENABLED=0 go build -o virtualgamepad.exe ./src
+        run: go build -o virtualgamepad.exe ./src
+        env:
+          CGO_ENABLED: 0
 
       - name: Package
         shell: pwsh
