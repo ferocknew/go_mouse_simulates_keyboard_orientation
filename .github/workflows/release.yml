@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        run: CGO_ENABLED=1 go build -o virtualgamepad ./src
+
+      - name: Package
+        run: |
+          mkdir dist
+          cp virtualgamepad config.yaml dist/
+          cd dist
+          zip -j "$GITHUB_WORKSPACE/virtualgamepad-${{ github.ref_name }}-darwin-arm64.zip" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64
+          path: virtualgamepad-*.zip
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -o virtualgamepad.exe ./src
+
+      - name: Package
+        shell: pwsh
+        run: |
+          mkdir dist
+          Copy-Item virtualgamepad.exe, config.yaml dist/
+          Compress-Archive -Path dist\* -DestinationPath "virtualgamepad-${{ github.ref_name }}-windows-amd64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-amd64
+          path: virtualgamepad-*.zip
+
+  release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.zip
+          generate_release_notes: true
